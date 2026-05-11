@@ -1,0 +1,7 @@
+node_modules
+.env
+media/*.wav
+media/*.mp3
+uploads
+ffmpeg.zip
+.claude

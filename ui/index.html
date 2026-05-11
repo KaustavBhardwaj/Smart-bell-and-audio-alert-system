@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IoT Smart Bell Console</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">🔔</div>
+        <div>
+          <h1>Smart Bell</h1>
+          <p>Audio Node Control</p>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Main navigation">
+        <button class="nav-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="nav-btn" data-tab="playback">Playback</button>
+        <button class="nav-btn" data-tab="tts">TTS / AI</button>
+        <button class="nav-btn" data-tab="schedules">Schedules</button>
+        <button class="nav-btn" data-tab="emergency">Emergency</button>
+        <button class="nav-btn" data-tab="settings">Settings</button>
+      </nav>
+
+      <div class="server-card">
+        <span class="dot" id="statusDot"></span>
+        <div>
+          <strong id="statusText">Checking server</strong>
+          <small id="serverText">API auto-detected</small>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">IoT Announcement & Bell Management</p>
+          <h2 id="pageTitle">Dashboard</h2>
+        </div>
+        <div class="top-actions">
+          <button class="btn ghost" id="refreshBtn">Refresh</button>
+          <button class="btn danger" id="stopAllBtn">Stop Audio</button>
+        </div>
+      </header>
+
+      <section id="dashboard" class="tab active">
+        <div class="grid stats-grid">
+          <article class="card metric">
+            <span>Total Schedules</span>
+            <strong id="totalSchedules">0</strong>
+          </article>
+          <article class="card metric">
+            <span>Audio Files</span>
+            <strong id="totalFiles">0</strong>
+          </article>
+          <article class="card metric">
+            <span>MQTT Status</span>
+            <strong id="mqttStatus">-</strong>
+          </article>
+          <article class="card metric">
+            <span>Emergency</span>
+            <strong id="emergencyMini">-</strong>
+          </article>
+        </div>
+
+        <div class="grid two">
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <h3>Quick Bell Control</h3>
+                <p>Use this for instant bell testing.</p>
+              </div>
+            </div>
+            <div class="button-row">
+              <button class="btn primary" id="bellOnBtn">Ring Bell</button>
+              <button class="btn" id="bellOffBtn">Stop Bell</button>
+              <button class="btn danger" id="emergencyTriggerBtnTop">Emergency Trigger</button>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <h3>Master Volume</h3>
+                <p>Controls audio node volume from 0 to 100.</p>
+              </div>
+              <strong id="volumeLabel">70%</strong>
+            </div>
+            <input id="volumeSlider" type="range" min="0" max="100" value="70" />
+            <div class="button-row right"><button class="btn primary" id="setVolumeBtn">Apply Volume</button></div>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h3>Recent Activity</h3>
+              <p>Frontend request log for debugging.</p>
+            </div>
+            <button class="btn ghost small" id="clearLogBtn">Clear</button>
+          </div>
+          <div id="activityLog" class="log"></div>
+        </article>
+      </section>
+
+      <section id="playback" class="tab">
+        <div class="grid two">
+          <article class="card">
+            <h3>Upload Announcement</h3>
+            <p class="muted">Uploads audio to backend, converts it to ESP32-friendly WAV.</p>
+            <form id="uploadForm" class="form">
+              <label>Audio file
+                <input type="file" name="audio" accept="audio/*" required />
+              </label>
+              <label class="checkbox"><input type="checkbox" id="uploadAutoPlay" /> Upload and play immediately</label>
+              <button class="btn primary" type="submit">Upload Audio</button>
+            </form>
+          </article>
+
+          <article class="card">
+            <h3>Play Existing File</h3>
+            <p class="muted">Select any file from `/media` or registered audio list.</p>
+            <form id="playFileForm" class="form">
+              <label>Audio file
+                <select id="fileSelect" required></select>
+              </label>
+              <label>Target node
+                <select id="playTarget">
+                  <option value="all">All Audio Nodes</option>
+                  <option value="node1">Audio Node 1</option>
+                  <option value="node2">Audio Node 2</option>
+                </select>
+              </label>
+              <label>Volume
+                <input id="playVolume" type="number" min="0" max="100" value="70" />
+              </label>
+              <div class="button-row">
+                <button class="btn primary" type="submit">Play File</button>
+                <button class="btn" type="button" id="playTestBtn">Play Test</button>
+              </div>
+            </form>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h3>Audio Library</h3>
+              <p>Files available for playback and scheduling.</p>
+            </div>
+            <button class="btn ghost small" id="reloadFilesBtn">Reload Files</button>
+          </div>
+          <div id="fileList" class="list"></div>
+        </article>
+      </section>
+
+      <section id="tts" class="tab">
+        <div class="grid two">
+          <article class="card">
+            <h3>Text-to-Speech Announcement</h3>
+            <form id="ttsForm" class="form">
+              <label>Announcement text
+                <textarea id="ttsText" rows="6" placeholder="Enter announcement text..." required></textarea>
+              </label>
+              <div class="form-grid">
+                <label>Language
+                  <select id="languageSelect"><option value="en">English</option></select>
+                </label>
+                <label>Speed
+                  <input id="ttsSpeed" type="number" min="0.5" max="2" step="0.1" value="1" />
+                </label>
+              </div>
+              <label class="checkbox"><input type="checkbox" id="ttsAutoPlay" /> Generate and play now</label>
+              <div class="button-row">
+                <button class="btn primary" type="submit">Generate TTS</button>
+                <button class="btn" type="button" id="previewTtsBtn">Preview</button>
+              </div>
+            </form>
+          </article>
+
+          <article class="card">
+            <h3>AI Announcement</h3>
+            <p class="muted">Uses your backend `/announcement/ai` route to create a formal announcement from a prompt.</p>
+            <form id="aiForm" class="form">
+              <label>Prompt
+                <textarea id="aiPrompt" rows="6" placeholder="Example: Make a short morning assembly announcement for students..." required></textarea>
+              </label>
+              <label>Language
+                <select id="aiLanguage"><option value="en">English</option></select>
+              </label>
+              <label>Target node
+                <select id="aiTarget">
+                  <option value="all">All Audio Nodes</option>
+                  <option value="node1">Audio Node 1</option>
+                  <option value="node2">Audio Node 2</option>
+                </select>
+              </label>
+              <label class="checkbox"><input type="checkbox" id="aiAutoPlay" checked /> Play after generation</label>
+              <button class="btn primary" type="submit">Create AI Announcement</button>
+            </form>
+          </article>
+        </div>
+
+        <article class="card">
+          <h3>Generated Output</h3>
+          <pre id="generatedOutput" class="output">Generated announcement response will appear here.</pre>
+        </article>
+      </section>
+
+      <section id="schedules" class="tab">
+        <div class="grid three">
+          <article class="card">
+            <h3>Bell Schedule</h3>
+            <form id="bellScheduleForm" class="form compact-form">
+              <input id="bellScheduleName" placeholder="Name e.g. Lunch Bell" required />
+              <input id="bellScheduleTime" type="time" required />
+              <input id="bellDuration" type="number" min="1" value="5" placeholder="Duration seconds" />
+              <div class="days" data-days-for="bell"></div>
+              <button class="btn primary" type="submit">Add Bell</button>
+            </form>
+          </article>
+
+          <article class="card">
+            <h3>File Announcement</h3>
+            <form id="announcementScheduleForm" class="form compact-form">
+              <input id="announcementScheduleName" placeholder="Name e.g. Assembly Audio" required />
+              <input id="announcementScheduleTime" type="time" required />
+              <select id="announcementScheduleFile" required></select>
+              <div class="days" data-days-for="announcement"></div>
+              <button class="btn primary" type="submit">Add File Schedule</button>
+            </form>
+          </article>
+
+          <article class="card">
+            <h3>TTS Schedule</h3>
+            <form id="ttsScheduleForm" class="form compact-form">
+              <input id="ttsScheduleName" placeholder="Name e.g. Good Morning" required />
+              <input id="ttsScheduleTime" type="time" required />
+              <textarea id="ttsScheduleText" rows="3" placeholder="TTS text" required></textarea>
+              <div class="days" data-days-for="tts"></div>
+              <button class="btn primary" type="submit">Add TTS Schedule</button>
+            </form>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h3>All Schedules</h3>
+              <p>Toggle or delete schedules from the backend.</p>
+            </div>
+            <button class="btn ghost small" id="reloadSchedulesBtn">Reload Schedules</button>
+          </div>
+          <div id="scheduleList" class="list"></div>
+        </article>
+      </section>
+
+      <section id="emergency" class="tab">
+        <div class="grid two">
+          <article class="card emergency-card">
+            <h3>Emergency Bell</h3>
+            <p class="muted">For urgent bell triggering through your emergency backend service.</p>
+            <div class="status-panel">
+              <span>Status</span>
+              <strong id="emergencyStatus">-</strong>
+            </div>
+            <div class="button-row">
+              <button class="btn danger" id="emergencyTriggerBtn">Trigger Emergency</button>
+<button class="btn" id="emergencyStopBtn">Stop Emergency</button>
+<button class="btn primary" id="enableEmergencyBtn">Enable</button>
+<button class="btn" id="disableEmergencyBtn">Disable</button>
+            </div>
+          </article>
+
+          <article class="card">
+            <h3>Emergency Configuration</h3>
+            <form id="emergencyConfigForm" class="form">
+              <label>Repeat Count
+                <input id="emergencyRepeatCount" type="number" min="1" value="3" />
+              </label>
+              <label>Repeat Interval seconds
+                <input id="emergencyRepeatInterval" type="number" min="1" value="5" />
+              </label>
+              <label>Duration seconds
+                <input id="emergencyDuration" type="number" min="1" value="5" />
+              </label>
+              <button class="btn primary" type="submit">Save Config</button>
+            </form>
+          </article>
+        </div>
+      </section>
+
+      <section id="settings" class="tab">
+        <article class="card">
+          <h3>API Settings</h3>
+          <p class="muted">When opened from `/ui`, API base is automatically your backend origin. When opened directly as a file, use localhost.</p>
+          <form id="apiSettingsForm" class="form">
+            <label>API Base URL
+              <input id="apiBaseInput" type="url" placeholder="http://localhost:3000" />
+            </label>
+            <button class="btn primary" type="submit">Save API URL</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <h3>Detected Backend Structure</h3>
+          <div class="endpoint-grid">
+            <code>GET /health</code><code>POST /bell/on</code><code>POST /bell/off</code>
+            <code>GET /announcement/list</code><code>POST /announcement/play-file</code><code>POST /announcement/stop</code>
+            <code>POST /announcement/upload</code><code>POST /announcement/upload-and-play</code><code>POST /announcement/tts</code>
+            <code>POST /announcement/ai</code><code>GET /api/schedules</code><code>POST /emergency/trigger</code>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <div id="toastRoot" class="toast-root" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

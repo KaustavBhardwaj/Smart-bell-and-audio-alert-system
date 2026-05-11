@@ -1,0 +1,156 @@
+## IOT SMART BELL & ANNOUNCEMENT SYSTEM
+
+1. HARDWARE COMPONENTS
+
+---
+
+• ESP32 (Microcontroller)
+
+* Acts as the main processing unit
+* Handles Wi-Fi connectivity
+* Receives commands via MQTT/HTTP
+* Streams and processes audio data
+
+• MAX98357A I2S Audio Amplifier
+
+* Converts digital audio (I2S) from ESP32 to analog sound
+* Drives the speaker directly
+* Used for playing announcements
+
+• 5V Buzzer
+
+* Used for bell ringing functionality
+* Triggered via ESP32 GPIO pins
+* Provides simple alert sound
+
+• Speaker
+
+* Connected to MAX98357A
+* Outputs audio announcements
+
+---
+
+2. TECH STACK (SOFTWARE)
+
+---
+
+Frontend:
+• HTML
+• CSS
+• JavaScript
+• Dashboard-based UI for controlling:
+
+* Bell
+* File announcements
+* TTS announcements
+* Scheduling
+
+Backend:
+• Node.js
+• Express.js
+• REST APIs for communication
+• File handling using fs module
+• Middleware (logging, error handling)
+
+---
+
+3. BACKEND TOOLS & SERVICES
+
+---
+
+• Google Text-to-Speech API
+
+* Converts text into speech audio
+* Used for dynamic announcements
+
+• FFmpeg
+
+* Converts audio files into ESP32-compatible format
+* Ensures:
+
+  * 16-bit PCM
+  * Mono channel
+  * Proper sampling rate (e.g., 16kHz)
+
+• File System (Local Storage)
+
+* Stores uploaded and processed audio files
+* Serves files via HTTP endpoints
+
+---
+
+4. COMMUNICATION PROTOCOLS
+
+---
+
+• MQTT (Message Queuing Telemetry Transport)
+
+* Lightweight protocol for IoT communication
+* Used to send commands to ESP32
+* Example:
+  PLAY_URL | http://server/media/file.wav
+
+• HTTP (HyperText Transfer Protocol)
+
+* Used for:
+
+  * Sending API requests from frontend
+  * Serving audio files to ESP32
+  * Uploading files
+  * Triggering announcements
+
+---
+
+5. SYSTEM WORKFLOW
+
+---
+
+1. User interacts with Web UI
+2. Request sent to Node.js backend
+3. Backend processes request:
+
+   * Upload file OR generate TTS
+   * Convert using FFmpeg (if needed)
+4. Backend sends MQTT message to ESP32
+5. ESP32 receives command
+6. ESP32 fetches audio via HTTP
+7. Audio is played using I2S + amplifier
+
+---
+
+6. KEY FEATURES
+
+---
+
+• Smart Bell Automation
+• Scheduled Announcements
+• File-based Audio Playback
+• Text-to-Speech Announcements
+• Real-time Control via Web UI
+• Lightweight ESP32-based system
+• Efficient audio streaming (no heavy libraries)
+
+---
+
+7. DESIGN DECISIONS
+
+---
+
+• Avoided heavy audio libraries on ESP32
+
+* Due to limited RAM
+* Used direct WAV streaming instead
+
+• Used FFmpeg in backend
+
+* Ensures compatibility
+* Reduces ESP32 processing load
+
+• Used MQTT + HTTP hybrid approach
+
+* MQTT for commands
+* HTTP for data transfer (audio)
+
+---
+
+## END OF FILE

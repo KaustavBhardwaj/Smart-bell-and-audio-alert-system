@@ -1,0 +1,28 @@
+[
+  {
+    "id": "morning-bell",
+    "type": "bell",
+    "time": "08:00",
+    "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+    "repeat": true,
+    "enabled": true
+  },
+  {
+    "id": "assembly-audio",
+    "type": "announcement",
+    "filename": "assembly.wav",
+    "time": "08:05",
+    "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+    "repeat": true,
+    "enabled": true
+  },
+  {
+    "id": "lunch-tts",
+    "type": "announcement",
+    "text": "Lunch break starts now",
+    "time": "12:30",
+    "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+    "repeat": true,
+    "enabled": true
+  }
+]

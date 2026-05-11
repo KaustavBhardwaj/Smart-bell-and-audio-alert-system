@@ -1,0 +1,31 @@
+{
+  "audioFiles": [
+    {
+      "id": "bell",
+      "filename": "bell.wav",
+      "name": "Bell Sound",
+      "description": "Bell ringing sound",
+      "duration": 10,
+      "uploadedAt": "2026-04-19T08:00:00Z",
+      "type": "file"
+    },
+    {
+      "id": "test",
+      "filename": "test.wav",
+      "name": "Test Sound",
+      "description": "Test audio file",
+      "duration": 5,
+      "uploadedAt": "2026-04-19T08:00:00Z",
+      "type": "file"
+    },
+    {
+      "id": "good-luck-charm-3---copy",
+      "filename": "Good_Luck_Charm_3_-_Copy_1776718903157.wav",
+      "name": "Good Luck Charm 3 - Copy",
+      "description": "Uploaded announcement: Good Luck Charm 3 - Copy.mp3",
+      "duration": 0,
+      "uploadedAt": "2026-04-20T21:01:44.284Z",
+      "type": "file"
+    }
+  ]
+}

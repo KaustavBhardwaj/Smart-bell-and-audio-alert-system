@@ -1,0 +1,17 @@
+{
+  "emergencyBell": {
+    "id": "emergency-bell",
+    "name": "Emergency Bell",
+    "description": "Emergency bell - can be triggered manually via API or MQTT",
+    "enabled": true,
+    "type": "bell",
+    "duration": 5,
+    "triggerType": "manual",
+    "repeatCount": 5,
+    "repeatInterval": 2,
+    "lastTriggeredAt": "2026-05-11T16:35:17.413Z",
+    "createdAt": "2026-04-19T08:00:00Z",
+    "updatedAt": "2026-04-19T11:44:49.607Z",
+    "lastStoppedAt": "2026-05-11T16:34:53.954Z"
+  }
+}
