@@ -48,6 +48,8 @@ async function addAudioFile(audioData) {
     duration,
     type,
     uploadedAt: new Date(),
+    cloudUrl: audioData.cloudUrl || null,
+publicId: audioData.publicId || null,
   });
 
   console.log(`[AUDIO] Added audio file to MongoDB: ${id} (${filename})`);

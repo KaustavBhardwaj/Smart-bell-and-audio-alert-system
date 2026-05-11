@@ -1,15 +1,18 @@
 const path = require("path");
 const fs = require("fs");
 
-const { MEDIA_PATH, PUBLIC_BASE_URL } = require("../config/env");
+const { MEDIA_PATH } = require("../config/env");
+const cloudinary = require("../config/cloudinary");
+
 const { sanitizeBaseName } = require("../utils/sanitize");
 const { validateFileUpload } = require("../utils/validation");
 const { convertToAnnouncementWav } = require("../services/converterService");
-const { playFile } = require("../services/audioService");
+const { publishPlayUrl } = require("../services/mqttService");
 const { addAudioFile } = require("../services/audioFileService");
 
 async function uploadOnly(req, res) {
   let uploadedPath = null;
+  let outputPath = null;
 
   try {
     const validation = validateFileUpload(req.file);
@@ -22,10 +25,17 @@ async function uploadOnly(req, res) {
 
     const baseName = sanitizeBaseName(req.file.originalname || "announcement");
     const outputFilename = `${baseName}_${Date.now()}.wav`;
-    const outputPath = path.join(MEDIA_PATH, outputFilename);
+    outputPath = path.join(MEDIA_PATH, outputFilename);
 
     await convertToAnnouncementWav(uploadedPath, outputPath);
     fs.unlink(uploadedPath, () => {});
+
+    const cloudUpload = await cloudinary.uploader.upload(outputPath, {
+      resource_type: "video",
+      folder: "iot-audio-files",
+      public_id: outputFilename.replace(".wav", ""),
+      format: "wav",
+    });
 
     const fileEntry = await addAudioFile({
       filename: outputFilename,
@@ -33,12 +43,20 @@ async function uploadOnly(req, res) {
       description: `Uploaded announcement: ${req.file.originalname}`,
       duration: 0,
       type: "file",
+      cloudUrl: cloudUpload.secure_url,
+      publicId: cloudUpload.public_id,
     });
+
+    if (outputPath && fs.existsSync(outputPath)) {
+      fs.unlink(outputPath, () => {});
+    }
 
     res.json({
       converted: true,
+      uploadedToCloudinary: true,
       filename: outputFilename,
-      url: `${PUBLIC_BASE_URL}/media/${outputFilename}`,
+      url: cloudUpload.secure_url,
+      cloudUrl: cloudUpload.secure_url,
       fileId: fileEntry.id,
       file: fileEntry,
       format: "wav",
@@ -46,13 +64,14 @@ async function uploadOnly(req, res) {
       sampleRate: 16000,
       bitDepth: 16,
       registered: true,
-      message: "File uploaded and saved in MongoDB successfully",
+      message: "File uploaded, converted, stored in Cloudinary, and saved in MongoDB",
     });
   } catch (err) {
-    if (uploadedPath) fs.unlink(uploadedPath, () => {});
+    if (uploadedPath && fs.existsSync(uploadedPath)) fs.unlink(uploadedPath, () => {});
+    if (outputPath && fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
 
     res.status(500).json({
-      error: "conversion failed",
+      error: "upload failed",
       details: err.message,
     });
   }
@@ -60,6 +79,7 @@ async function uploadOnly(req, res) {
 
 async function uploadAndPlay(req, res) {
   let uploadedPath = null;
+  let outputPath = null;
 
   try {
     const validation = validateFileUpload(req.file);
@@ -72,10 +92,17 @@ async function uploadAndPlay(req, res) {
 
     const baseName = sanitizeBaseName(req.file.originalname || "announcement");
     const outputFilename = `${baseName}_${Date.now()}.wav`;
-    const outputPath = path.join(MEDIA_PATH, outputFilename);
+    outputPath = path.join(MEDIA_PATH, outputFilename);
 
     await convertToAnnouncementWav(uploadedPath, outputPath);
     fs.unlink(uploadedPath, () => {});
+
+    const cloudUpload = await cloudinary.uploader.upload(outputPath, {
+      resource_type: "video",
+      folder: "iot-audio-files",
+      public_id: outputFilename.replace(".wav", ""),
+      format: "wav",
+    });
 
     const fileEntry = await addAudioFile({
       filename: outputFilename,
@@ -83,22 +110,31 @@ async function uploadAndPlay(req, res) {
       description: `Uploaded announcement: ${req.file.originalname}`,
       duration: 0,
       type: "file",
+      cloudUrl: cloudUpload.secure_url,
+      publicId: cloudUpload.public_id,
     });
 
-    const url = playFile(outputFilename);
+    publishPlayUrl(cloudUpload.secure_url);
+
+    if (outputPath && fs.existsSync(outputPath)) {
+      fs.unlink(outputPath, () => {});
+    }
 
     res.json({
       converted: true,
+      uploadedToCloudinary: true,
       played: true,
       filename: outputFilename,
-      url,
+      url: cloudUpload.secure_url,
+      cloudUrl: cloudUpload.secure_url,
       fileId: fileEntry.id,
       file: fileEntry,
       registered: true,
-      message: "File uploaded, saved in MongoDB, and playing",
+      message: "File uploaded, stored in Cloudinary, saved in MongoDB, and playing",
     });
   } catch (err) {
-    if (uploadedPath) fs.unlink(uploadedPath, () => {});
+    if (uploadedPath && fs.existsSync(uploadedPath)) fs.unlink(uploadedPath, () => {});
+    if (outputPath && fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
 
     res.status(500).json({
       error: "upload and play failed",

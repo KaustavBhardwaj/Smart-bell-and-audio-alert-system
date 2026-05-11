@@ -8,6 +8,8 @@ const audioFileSchema = new mongoose.Schema({
   duration: Number,
   type: String,
   uploadedAt: { type: Date, default: Date.now },
+  cloudUrl: String,
+publicId: String,
 }, { timestamps: true });
 
 module.exports = mongoose.model("AudioFile", audioFileSchema);
