@@ -28,7 +28,7 @@ app.use("/ui", express.static(path.join(__dirname, "../ui")));
 
 
 app.use(express.json());
-app.use(apiKeyAuth);
+// app.use(apiKeyAuth);
 app.use(requestLogger);
 app.use(express.json());
 
