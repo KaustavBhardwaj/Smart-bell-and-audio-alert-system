@@ -41,16 +41,16 @@ async function addAudioFile(audioData) {
   const id = audioData.id || await generateUniqueId(filename);
 
   const newFile = await AudioFile.create({
-    id,
-    filename,
-    name: name || filename,
-    description: description || "",
-    duration,
-    type,
-    uploadedAt: new Date(),
-    cloudUrl: audioData.cloudUrl || null,
-publicId: audioData.publicId || null,
-  });
+  id,
+  filename,
+  name: name || filename,
+  description: description || "",
+  duration,
+  type,
+  cloudUrl: audioData.cloudUrl || null,
+  publicId: audioData.publicId || null,
+  uploadedAt: new Date(),
+});
 
   console.log(`[AUDIO] Added audio file to MongoDB: ${id} (${filename})`);
 

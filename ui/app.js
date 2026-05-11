@@ -52,7 +52,7 @@ function logAction(title, data = '') {
 }
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[c]));
+  return String(value ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[c]));
 }
 
 function setLoading(button, loading, label = 'Working...') {
@@ -124,16 +124,25 @@ async function loadFiles() {
   let files = [];
   try {
     const registered = await api('/api/schedules/files/available');
+
     files = (registered.files || []).map(file => ({
+      id: file.id || file.filename,
       filename: file.filename || file.name,
       name: file.name || file.title || file.filename,
       description: file.description || '',
-      id: file.id || file.filename
+      cloudUrl: file.cloudUrl || file.url || null,
+      publicId: file.publicId || null,
     })).filter(file => file.filename);
   } catch (_) {
     try {
       const listed = await api('/announcement/list');
-      files = (listed.files || []).map(filename => ({ filename, name: filename, id: filename }));
+      files = (listed.files || []).map(filename => ({
+        id: filename,
+        filename,
+        name: filename,
+        description: '',
+        cloudUrl: null,
+      }));
     } catch (err) {
       logAction('Failed to load files', err.message);
     }
@@ -147,16 +156,24 @@ async function loadFiles() {
 
 function renderFileOptions() {
   const options = audioFiles.length
+    ? audioFiles.map(file => `<option value="${escapeHtml(file.id)}">${escapeHtml(file.name || file.filename)}</option>`).join('')
+    : '<option value="">No audio files found</option>';
+
+  $('fileSelect').innerHTML = options;
+  $('announcementScheduleFile').innerHTML = audioFiles.length
     ? audioFiles.map(file => `<option value="${escapeHtml(file.filename)}">${escapeHtml(file.name || file.filename)}</option>`).join('')
     : '<option value="">No audio files found</option>';
-  $('fileSelect').innerHTML = options;
-  $('announcementScheduleFile').innerHTML = options;
+}
+
+function getFileOpenUrl(file) {
+  return file.cloudUrl || apiUrl(`/media/${encodeURIComponent(file.filename)}`);
 }
 
 function renderFileList() {
   const root = $('fileList');
+
   if (!audioFiles.length) {
-    root.innerHTML = '<div class="item"><div><div class="item-title">No audio files found</div><div class="item-meta">Upload a file first or check backend media folder.</div></div></div>';
+    root.innerHTML = '<div class="item"><div><div class="item-title">No audio files found</div><div class="item-meta">Upload a file first.</div></div></div>';
     return;
   }
 
@@ -164,13 +181,16 @@ function renderFileList() {
     <div class="item">
       <div>
         <div class="item-title">${escapeHtml(file.name || file.filename)}</div>
-        <div class="item-meta">${escapeHtml(file.filename)}${file.description ? ` • ${escapeHtml(file.description)}` : ''}</div>
+        <div class="item-meta">
+          ${escapeHtml(file.filename)}
+          ${file.cloudUrl ? ' • Cloudinary' : ' • Local media'}
+          ${file.description ? ` • ${escapeHtml(file.description)}` : ''}
+        </div>
       </div>
       <div class="item-actions">
-       <button class="btn small primary" data-play-file="${escapeHtml(file.filename)}">Play</button>
-<a class="btn small ghost" href="${apiUrl(`/media/${encodeURIComponent(file.filename)}`)}" target="_blank" rel="noopener">Open</a>
-<button class="btn small danger" data-delete-file="${escapeHtml(file.id)}">Delete</button>
-
+        <button class="btn small primary" data-play-file-id="${escapeHtml(file.id)}">Play</button>
+        <a class="btn small ghost" href="${escapeHtml(getFileOpenUrl(file))}" target="_blank" rel="noopener">Open</a>
+        <button class="btn small danger" data-delete-file="${escapeHtml(file.id)}">Delete</button>
       </div>
     </div>
   `).join('');
@@ -189,6 +209,7 @@ async function loadSchedules() {
 
 function renderSchedules() {
   const root = $('scheduleList');
+
   if (!schedules.length) {
     root.innerHTML = '<div class="item"><div><div class="item-title">No schedules created</div><div class="item-meta">Create bell, audio file, or TTS schedules above.</div></div></div>';
     return;
@@ -197,6 +218,7 @@ function renderSchedules() {
   root.innerHTML = schedules.map(schedule => {
     const details = [schedule.type, schedule.time, (schedule.days || []).join(', ') || 'one-time'].filter(Boolean).join(' • ');
     const content = schedule.filename || schedule.text || `duration ${schedule.duration || 5}s`;
+
     return `
       <div class="item">
         <div>
@@ -247,6 +269,26 @@ async function postJson(path, payload, successMessage) {
   return data;
 }
 
+function getSelectedPlayFile() {
+  const selectedId = $('fileSelect').value;
+  return audioFiles.find(file => file.id === selectedId);
+}
+
+async function playAudioFileById(fileId, target = 'all') {
+  const file = audioFiles.find(f => f.id === fileId);
+
+  if (!file) {
+    throw new Error('Selected audio file not found in UI list');
+  }
+
+  return await postJson('/announcement/play-file', {
+    filename: file.filename,
+    url: file.cloudUrl || null,
+    target,
+    volume: Number($('playVolume').value || 70),
+  }, 'Playback command sent');
+}
+
 function bindEvents() {
   qsa('.nav-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
   $('refreshBtn').addEventListener('click', refreshAll);
@@ -257,17 +299,21 @@ function bindEvents() {
   $('stopAllBtn').addEventListener('click', async () => {
     try { await postJson('/announcement/stop', { target: 'all' }, 'Audio stop command sent'); } catch (err) { toast(err.message, 'error'); }
   });
+
   $('bellOnBtn').addEventListener('click', async () => {
     try { await postJson('/bell/on', {}, 'Bell ON command sent'); } catch (err) { toast(err.message, 'error'); }
   });
+
   $('bellOffBtn').addEventListener('click', async () => {
     try { await postJson('/bell/off', {}, 'Bell OFF command sent'); } catch (err) { toast(err.message, 'error'); }
   });
+
   $('playTestBtn').addEventListener('click', async () => {
     try { await postJson('/announcement/test', {}, 'Test audio command sent'); } catch (err) { toast(err.message, 'error'); }
   });
 
   $('volumeSlider').addEventListener('input', e => $('volumeLabel').textContent = `${e.target.value}%`);
+
   $('setVolumeBtn').addEventListener('click', async () => {
     try {
       const volume = Number($('volumeSlider').value);
@@ -279,147 +325,267 @@ function bindEvents() {
 
   $('uploadForm').addEventListener('submit', async (event) => {
     event.preventDefault();
+
     const button = event.submitter;
-    const formData = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const formData = new FormData(formElement);
     const path = $('uploadAutoPlay').checked ? '/announcement/upload-and-play' : '/announcement/upload';
+
     try {
       setLoading(button, true, 'Uploading...');
       const data = await api(path, { method: 'POST', body: formData });
       logAction('Upload successful', data);
       toast(data.message || 'Audio uploaded successfully');
-      event.currentTarget.reset();
+      formElement.reset();
       await loadFiles();
-    } catch (err) { toast(err.message, 'error'); }
-    finally { setLoading(button, false); }
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setLoading(button, false);
+    }
   });
 
   $('playFileForm').addEventListener('submit', async (event) => {
     event.preventDefault();
+
     try {
-      const payload = { filename: $('fileSelect').value, target: $('playTarget').value, volume: Number($('playVolume').value) };
-      await postJson('/announcement/play-file', payload, 'Playback command sent');
-    } catch (err) { toast(err.message, 'error'); }
+      const selectedFile = getSelectedPlayFile();
+
+      if (!selectedFile) {
+        throw new Error('Please select an audio file');
+      }
+
+      await postJson('/announcement/play-file', {
+        filename: selectedFile.filename,
+        url: selectedFile.cloudUrl || null,
+        target: $('playTarget').value,
+        volume: Number($('playVolume').value),
+      }, 'Playback command sent');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   });
 
   document.body.addEventListener('click', async (event) => {
-    const playFile = event.target.dataset.playFile;
+    const playFileId = event.target.dataset.playFileId;
     const toggleId = event.target.dataset.toggleSchedule;
     const deleteId = event.target.dataset.deleteSchedule;
     const deleteFileId = event.target.dataset.deleteFile;
-    if (deleteFileId) {
-  const confirmDelete = confirm("Delete this audio file permanently?");
-  if (!confirmDelete) return;
-
-  const data = await api(`/api/schedules/files/${encodeURIComponent(deleteFileId)}`, {
-    method: "DELETE",
-  });
-
-  logAction("Audio file deleted", data);
-  toast("Audio file deleted");
-  await loadFiles();
-}
 
     try {
-      if (playFile) await postJson('/announcement/play-file', { filename: playFile, target: 'all', volume: Number($('playVolume').value || 70) }, 'Playback command sent');
-      if (toggleId) { await postJson(`/api/schedules/${encodeURIComponent(toggleId)}/toggle`, {}, 'Schedule toggled'); await loadSchedules(); }
+      if (playFileId) {
+        await playAudioFileById(playFileId, 'all');
+      }
+
+      if (deleteFileId) {
+        const confirmDelete = confirm('Delete this audio file permanently?');
+        if (!confirmDelete) return;
+
+        const data = await api(`/api/schedules/files/${encodeURIComponent(deleteFileId)}`, {
+          method: 'DELETE',
+        });
+
+        logAction('Audio file deleted', data);
+        toast('Audio file deleted');
+        await loadFiles();
+      }
+
+      if (toggleId) {
+        await postJson(`/api/schedules/${encodeURIComponent(toggleId)}/toggle`, {}, 'Schedule toggled');
+        await loadSchedules();
+      }
+
       if (deleteId) {
         const data = await api(`/api/schedules/${encodeURIComponent(deleteId)}`, { method: 'DELETE' });
         logAction('Schedule deleted', data);
         toast('Schedule deleted');
         await loadSchedules();
       }
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   });
 
   $('ttsForm').addEventListener('submit', async (event) => {
     event.preventDefault();
+
     try {
-      const payload = { text: $('ttsText').value, language: $('languageSelect').value, speed: Number($('ttsSpeed').value), autoPlay: $('ttsAutoPlay').checked, convertToWav: true };
+      const payload = {
+        text: $('ttsText').value,
+        language: $('languageSelect').value,
+        speed: Number($('ttsSpeed').value),
+        autoPlay: $('ttsAutoPlay').checked,
+        convertToWav: true,
+      };
+
       const data = await postJson('/announcement/tts', payload, 'TTS generated');
       $('generatedOutput').textContent = JSON.stringify(data, null, 2);
       await loadFiles();
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   });
 
   $('previewTtsBtn').addEventListener('click', async () => {
     try {
-      const data = await postJson('/announcement/tts/preview', { text: $('ttsText').value, language: $('languageSelect').value, volume: Number($('playVolume').value || 70) }, 'TTS preview playing');
+      const data = await postJson('/announcement/tts/preview', {
+        text: $('ttsText').value,
+        language: $('languageSelect').value,
+        volume: Number($('playVolume').value || 70),
+      }, 'TTS preview playing');
+
       $('generatedOutput').textContent = JSON.stringify(data, null, 2);
       await loadFiles();
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   });
 
   $('aiForm').addEventListener('submit', async (event) => {
     event.preventDefault();
+
     try {
-      const payload = { prompt: $('aiPrompt').value, language: $('aiLanguage').value, target: $('aiTarget').value, autoPlay: $('aiAutoPlay').checked };
+      const payload = {
+        prompt: $('aiPrompt').value,
+        language: $('aiLanguage').value,
+        target: $('aiTarget').value,
+        autoPlay: $('aiAutoPlay').checked,
+      };
+
       const data = await postJson('/announcement/ai', payload, 'AI announcement created');
       $('generatedOutput').textContent = JSON.stringify(data, null, 2);
       await loadFiles();
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   });
 
   $('bellScheduleForm').addEventListener('submit', async (event) => {
     event.preventDefault();
+
     try {
       const name = $('bellScheduleName').value.trim();
-      await postJson('/api/schedules/bell', { id: uniqueId('bell'), name, time: $('bellScheduleTime').value, duration: Number($('bellDuration').value || 5), days: getCheckedDays('bell'), enabled: true }, 'Bell schedule created');
+      await postJson('/api/schedules/bell', {
+        id: uniqueId('bell'),
+        name,
+        time: $('bellScheduleTime').value,
+        duration: Number($('bellDuration').value || 5),
+        days: getCheckedDays('bell'),
+        enabled: true,
+      }, 'Bell schedule created');
+
       event.currentTarget.reset();
       await loadSchedules();
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   });
 
   $('announcementScheduleForm').addEventListener('submit', async (event) => {
     event.preventDefault();
+
     try {
       const name = $('announcementScheduleName').value.trim();
-      await postJson('/api/schedules/announcement', { id: uniqueId('audio'), name, filename: $('announcementScheduleFile').value, time: $('announcementScheduleTime').value, days: getCheckedDays('announcement'), enabled: true }, 'Announcement schedule created');
+      await postJson('/api/schedules/announcement', {
+        id: uniqueId('audio'),
+        name,
+        filename: $('announcementScheduleFile').value,
+        time: $('announcementScheduleTime').value,
+        days: getCheckedDays('announcement'),
+        enabled: true,
+      }, 'Announcement schedule created');
+
       event.currentTarget.reset();
       await loadSchedules();
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   });
 
   $('ttsScheduleForm').addEventListener('submit', async (event) => {
     event.preventDefault();
+
     try {
       const name = $('ttsScheduleName').value.trim();
-      await postJson('/api/schedules/tts', { id: uniqueId('tts'), name, text: $('ttsScheduleText').value, language: $('languageSelect').value || 'en', time: $('ttsScheduleTime').value, days: getCheckedDays('tts'), enabled: true }, 'TTS schedule created');
+      await postJson('/api/schedules/tts', {
+        id: uniqueId('tts'),
+        name,
+        text: $('ttsScheduleText').value,
+        language: $('languageSelect').value || 'en',
+        time: $('ttsScheduleTime').value,
+        days: getCheckedDays('tts'),
+        enabled: true,
+      }, 'TTS schedule created');
+
       event.currentTarget.reset();
       await loadSchedules();
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   });
 
   const triggerEmergency = async () => {
-    try { await postJson('/emergency/trigger', {}, 'Emergency bell triggered'); await loadEmergency(); } catch (err) { toast(err.message, 'error'); }
+    try {
+      await postJson('/emergency/trigger', {}, 'Emergency bell triggered');
+      await loadEmergency();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   };
+
   $('emergencyTriggerBtn').addEventListener('click', triggerEmergency);
   $('emergencyTriggerBtnTop').addEventListener('click', triggerEmergency);
+
   $('emergencyStopBtn').addEventListener('click', async () => {
-  try {
-    await postJson('/emergency/stop', {}, 'Emergency bell stopped');
-    await loadEmergency();
-  } catch (err) {
-    toast(err.message, 'error');
-  }
-});
+    try {
+      await postJson('/emergency/stop', {}, 'Emergency bell stopped');
+      await loadEmergency();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
   $('enableEmergencyBtn').addEventListener('click', async () => {
-    try { await api('/emergency/enable', { method: 'PUT', body: JSON.stringify({ enabled: true }) }); toast('Emergency enabled'); await loadEmergency(); } catch (err) { toast(err.message, 'error'); }
+    try {
+      await api('/emergency/enable', { method: 'PUT', body: JSON.stringify({ enabled: true }) });
+      toast('Emergency enabled');
+      await loadEmergency();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   });
+
   $('disableEmergencyBtn').addEventListener('click', async () => {
-    try { await api('/emergency/enable', { method: 'PUT', body: JSON.stringify({ enabled: false }) }); toast('Emergency disabled'); await loadEmergency(); } catch (err) { toast(err.message, 'error'); }
+    try {
+      await api('/emergency/enable', { method: 'PUT', body: JSON.stringify({ enabled: false }) });
+      toast('Emergency disabled');
+      await loadEmergency();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   });
+
   $('emergencyConfigForm').addEventListener('submit', async (event) => {
     event.preventDefault();
+
     try {
-      const payload = { repeatCount: Number($('emergencyRepeatCount').value), repeatInterval: Number($('emergencyRepeatInterval').value), duration: Number($('emergencyDuration').value) };
+      const payload = {
+        repeatCount: Number($('emergencyRepeatCount').value),
+        repeatInterval: Number($('emergencyRepeatInterval').value),
+        duration: Number($('emergencyDuration').value),
+      };
+
       const data = await api('/emergency/config', { method: 'PUT', body: JSON.stringify(payload) });
       logAction('Emergency config updated', data);
       toast('Emergency config updated');
       await loadEmergency();
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   });
 
   $('apiBaseInput').value = API_BASE;
+
   $('apiSettingsForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     API_BASE = $('apiBaseInput').value.trim() || DEFAULT_API_BASE;

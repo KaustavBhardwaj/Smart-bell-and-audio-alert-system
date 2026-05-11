@@ -30,12 +30,13 @@ async function uploadOnly(req, res) {
     await convertToAnnouncementWav(uploadedPath, outputPath);
     fs.unlink(uploadedPath, () => {});
 
-    const cloudUpload = await cloudinary.uploader.upload(outputPath, {
-      resource_type: "video",
-      folder: "iot-audio-files",
-      public_id: outputFilename.replace(".wav", ""),
-      format: "wav",
-    });
+   const cloudUpload = await cloudinary.uploader.upload(outputPath, {
+  resource_type: "raw",
+  folder: "iot-audio-files",
+  public_id: outputFilename,
+  use_filename: false,
+  unique_filename: false,
+});
 
     const fileEntry = await addAudioFile({
       filename: outputFilename,
@@ -98,11 +99,12 @@ async function uploadAndPlay(req, res) {
     fs.unlink(uploadedPath, () => {});
 
     const cloudUpload = await cloudinary.uploader.upload(outputPath, {
-      resource_type: "video",
-      folder: "iot-audio-files",
-      public_id: outputFilename.replace(".wav", ""),
-      format: "wav",
-    });
+  resource_type: "raw",
+  folder: "iot-audio-files",
+  public_id: outputFilename,
+  use_filename: false,
+  unique_filename: false,
+});
 
     const fileEntry = await addAudioFile({
       filename: outputFilename,

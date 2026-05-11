@@ -14,9 +14,29 @@ function playTest(req, res) {
 }
 
 function playExistingFile(req, res) {
-  const { filename, volume, target = "all" } = req.body;
+  const { filename, url, volume, target = "all" } = req.body;
 
-  // Validate filename first
+  let volumeLevel = 70;
+
+  if (volume !== undefined) {
+    volumeLevel = Math.max(0, Math.min(100, parseInt(volume) || 70));
+    setVolume(volumeLevel);
+    publishVolume(volumeLevel, target);
+  }
+
+  if (url) {
+    const { publishPlayUrl } = require("../services/mqttService");
+    publishPlayUrl(url, target);
+
+    return res.json({
+      sent: true,
+      source: "cloudinary",
+      url,
+      volume: volumeLevel,
+      target,
+    });
+  }
+
   const validation = validateFilename(filename);
   if (!validation.valid) {
     return res.status(400).json({ error: validation.error });
@@ -26,16 +46,16 @@ function playExistingFile(req, res) {
     return res.status(404).json({ error: "file not found" });
   }
 
-  // Handle volume if provided (0-100)
-  let volumeLevel = 70; // default
-  if (volume !== undefined) {
-    volumeLevel = Math.max(0, Math.min(100, parseInt(volume) || 70));
-    setVolume(volumeLevel);
-    publishVolume(volumeLevel, target);
-  }
+  const localUrl = playFile(filename, target);
 
-  const url = playFile(filename, target);
-  res.json({ sent: true, filename, url, volume: volumeLevel, target });
+  res.json({
+    sent: true,
+    source: "local",
+    filename,
+    url: localUrl,
+    volume: volumeLevel,
+    target,
+  });
 }
 
 function stopPlayback(req, res) {

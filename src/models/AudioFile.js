@@ -7,9 +7,9 @@ const audioFileSchema = new mongoose.Schema({
   description: String,
   duration: Number,
   type: String,
-  uploadedAt: { type: Date, default: Date.now },
   cloudUrl: String,
-publicId: String,
+  publicId: String,
+  uploadedAt: { type: Date, default: Date.now },
 }, { timestamps: true });
 
 module.exports = mongoose.model("AudioFile", audioFileSchema);
