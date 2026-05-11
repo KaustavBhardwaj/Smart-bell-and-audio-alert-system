@@ -409,7 +409,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     String filename = msg.substring(10);
     // Construct full URL based on server IP/port
     // Assuming server is at http://10.91.181.13:3000
-    String url = "https://your-render-app-name.onrender.com/media/" + filename;
+    String url = "https://smart-bell-and-audio-alert-system.onrender.com/media/" + filename;
     Serial.println("[AUDIO] Playing scheduled announcement: " + filename);
     streamWavFromUrl(url);
     return;

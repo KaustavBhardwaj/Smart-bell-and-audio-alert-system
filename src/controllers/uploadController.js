@@ -1,17 +1,19 @@
 const path = require("path");
 const fs = require("fs");
+
 const { MEDIA_PATH, PUBLIC_BASE_URL } = require("../config/env");
 const { sanitizeBaseName } = require("../utils/sanitize");
 const { validateFileUpload } = require("../utils/validation");
 const { convertToAnnouncementWav } = require("../services/converterService");
-const { playFile, registerAudioFile } = require("../services/audioService");
+const { playFile } = require("../services/audioService");
+const { addAudioFile } = require("../services/audioFileService");
 
 async function uploadOnly(req, res) {
   let uploadedPath = null;
 
   try {
-    // Validate file upload
     const validation = validateFileUpload(req.file);
+
     if (!validation.valid) {
       return res.status(400).json({ error: validation.error });
     }
@@ -25,29 +27,34 @@ async function uploadOnly(req, res) {
     await convertToAnnouncementWav(uploadedPath, outputPath);
     fs.unlink(uploadedPath, () => {});
 
-    // Register the file in audioFiles.json
-    const fileEntry = registerAudioFile(
-      outputFilename,
-      baseName.replace(/_/g, " "),
-      `Uploaded announcement: ${req.file.originalname}`,
-      0
-    );
+    const fileEntry = await addAudioFile({
+      filename: outputFilename,
+      name: baseName.replace(/_/g, " "),
+      description: `Uploaded announcement: ${req.file.originalname}`,
+      duration: 0,
+      type: "file",
+    });
 
     res.json({
       converted: true,
       filename: outputFilename,
       url: `${PUBLIC_BASE_URL}/media/${outputFilename}`,
       fileId: fileEntry.id,
+      file: fileEntry,
       format: "wav",
       channels: 1,
       sampleRate: 16000,
       bitDepth: 16,
       registered: true,
-      message: "File uploaded and registered successfully"
+      message: "File uploaded and saved in MongoDB successfully",
     });
   } catch (err) {
     if (uploadedPath) fs.unlink(uploadedPath, () => {});
-    res.status(500).json({ error: "conversion failed", details: err.message });
+
+    res.status(500).json({
+      error: "conversion failed",
+      details: err.message,
+    });
   }
 }
 
@@ -55,8 +62,8 @@ async function uploadAndPlay(req, res) {
   let uploadedPath = null;
 
   try {
-    // Validate file upload
     const validation = validateFileUpload(req.file);
+
     if (!validation.valid) {
       return res.status(400).json({ error: validation.error });
     }
@@ -70,13 +77,13 @@ async function uploadAndPlay(req, res) {
     await convertToAnnouncementWav(uploadedPath, outputPath);
     fs.unlink(uploadedPath, () => {});
 
-    // Register the file in audioFiles.json
-    const fileEntry = registerAudioFile(
-      outputFilename,
-      baseName.replace(/_/g, " "),
-      `Uploaded announcement: ${req.file.originalname}`,
-      0
-    );
+    const fileEntry = await addAudioFile({
+      filename: outputFilename,
+      name: baseName.replace(/_/g, " "),
+      description: `Uploaded announcement: ${req.file.originalname}`,
+      duration: 0,
+      type: "file",
+    });
 
     const url = playFile(outputFilename);
 
@@ -86,12 +93,17 @@ async function uploadAndPlay(req, res) {
       filename: outputFilename,
       url,
       fileId: fileEntry.id,
+      file: fileEntry,
       registered: true,
-      message: "File uploaded, registered and playing"
+      message: "File uploaded, saved in MongoDB, and playing",
     });
   } catch (err) {
     if (uploadedPath) fs.unlink(uploadedPath, () => {});
-    res.status(500).json({ error: "upload and play failed", details: err.message });
+
+    res.status(500).json({
+      error: "upload and play failed",
+      details: err.message,
+    });
   }
 }
 

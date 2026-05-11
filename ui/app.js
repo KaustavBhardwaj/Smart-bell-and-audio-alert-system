@@ -167,8 +167,10 @@ function renderFileList() {
         <div class="item-meta">${escapeHtml(file.filename)}${file.description ? ` • ${escapeHtml(file.description)}` : ''}</div>
       </div>
       <div class="item-actions">
-        <button class="btn small primary" data-play-file="${escapeHtml(file.filename)}">Play</button>
-        <a class="btn small ghost" href="${apiUrl(`/media/${encodeURIComponent(file.filename)}`)}" target="_blank" rel="noopener">Open</a>
+       <button class="btn small primary" data-play-file="${escapeHtml(file.filename)}">Play</button>
+<a class="btn small ghost" href="${apiUrl(`/media/${encodeURIComponent(file.filename)}`)}" target="_blank" rel="noopener">Open</a>
+<button class="btn small danger" data-delete-file="${escapeHtml(file.id)}">Delete</button>
+
       </div>
     </div>
   `).join('');
@@ -303,6 +305,19 @@ function bindEvents() {
     const playFile = event.target.dataset.playFile;
     const toggleId = event.target.dataset.toggleSchedule;
     const deleteId = event.target.dataset.deleteSchedule;
+    const deleteFileId = event.target.dataset.deleteFile;
+    if (deleteFileId) {
+  const confirmDelete = confirm("Delete this audio file permanently?");
+  if (!confirmDelete) return;
+
+  const data = await api(`/api/schedules/files/${encodeURIComponent(deleteFileId)}`, {
+    method: "DELETE",
+  });
+
+  logAction("Audio file deleted", data);
+  toast("Audio file deleted");
+  await loadFiles();
+}
 
     try {
       if (playFile) await postJson('/announcement/play-file', { filename: playFile, target: 'all', volume: Number($('playVolume').value || 70) }, 'Playback command sent');

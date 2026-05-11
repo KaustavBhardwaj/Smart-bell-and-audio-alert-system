@@ -1,138 +1,101 @@
-const fs = require("fs");
-const path = require("path");
+const AudioFile = require("../models/AudioFile");
 
-const AUDIO_FILES_PATH = path.join(__dirname, "../data/audioFiles.json");
+function makeAudioId(filename) {
+  const baseName =
+    filename.replace(/\.[^.]+$/, "").split("_").slice(0, -1).join("_") ||
+    filename.replace(/\.[^.]+$/, "");
 
-/**
- * Load all audio files from data file
- */
-function loadAudioFiles() {
-  try {
-    if (fs.existsSync(AUDIO_FILES_PATH)) {
-      const data = fs.readFileSync(AUDIO_FILES_PATH, "utf-8");
-      return JSON.parse(data).audioFiles || [];
-    }
-  } catch (err) {
-    console.error("Error loading audio files:", err.message);
-  }
-  return [];
+  return baseName
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
-/**
- * Save audio files to data file
- */
-function saveAudioFiles(files) {
-  try {
-    fs.writeFileSync(AUDIO_FILES_PATH, JSON.stringify({ audioFiles: files }, null, 2));
-    return true;
-  } catch (err) {
-    console.error("Error saving audio files:", err.message);
-    return false;
+async function generateUniqueId(filename) {
+  const originalId = makeAudioId(filename) || `audio-${Date.now()}`;
+  let id = originalId;
+  let counter = 1;
+
+  while (await AudioFile.findOne({ id })) {
+    id = `${originalId}-${counter}`;
+    counter++;
   }
+
+  return id;
 }
 
-/**
- * Add new audio file metadata
- */
-function addAudioFile(audioData) {
-  const { id, filename, name, description, duration, type = "file" } = audioData;
+async function addAudioFile(audioData) {
+  const { filename, name, description, duration = 0, type = "file" } = audioData;
 
-  if (!id || !filename || !name) {
-    throw new Error("id, filename, and name are required");
+  if (!filename) {
+    throw new Error("filename is required");
   }
 
-  const files = loadAudioFiles();
+  const existingByFilename = await AudioFile.findOne({ filename });
 
-  // Check if ID already exists
-  if (files.some(f => f.id === id)) {
-    throw new Error(`Audio file with ID '${id}' already exists`);
+  if (existingByFilename) {
+    return existingByFilename;
   }
 
-  const newFile = {
+  const id = audioData.id || await generateUniqueId(filename);
+
+  const newFile = await AudioFile.create({
     id,
     filename,
-    name,
+    name: name || filename,
     description: description || "",
-    duration: duration || 0,
-    uploadedAt: new Date().toISOString(),
-    type
-  };
+    duration,
+    type,
+    uploadedAt: new Date(),
+  });
 
-  files.push(newFile);
-  saveAudioFiles(files);
+  console.log(`[AUDIO] Added audio file to MongoDB: ${id} (${filename})`);
 
-  console.log(`[AUDIO] Added audio file: ${id} (${filename})`);
   return newFile;
 }
 
-/**
- * Get audio file by ID
- */
-function getAudioFileById(id) {
-  const files = loadAudioFiles();
-  return files.find(f => f.id === id);
+async function getAudioFileById(id) {
+  return await AudioFile.findOne({ id });
 }
 
-/**
- * Get audio file by filename
- */
-function getAudioFileByFilename(filename) {
-  const files = loadAudioFiles();
-  return files.find(f => f.filename === filename);
+async function getAudioFileByFilename(filename) {
+  return await AudioFile.findOne({ filename });
 }
 
-/**
- * Get all audio files
- */
-function getAllAudioFiles() {
-  return loadAudioFiles();
+async function getAllAudioFiles() {
+  return await AudioFile.find({}).sort({ uploadedAt: -1 });
 }
 
-/**
- * Update audio file metadata
- */
-function updateAudioFile(id, updates) {
-  const files = loadAudioFiles();
-  const file = files.find(f => f.id === id);
+async function updateAudioFile(id, updates) {
+  const updated = await AudioFile.findOneAndUpdate(
+    { id },
+    updates,
+    { new: true }
+  );
 
-  if (!file) {
+  if (!updated) {
     throw new Error(`Audio file with ID '${id}' not found`);
   }
 
-  Object.assign(file, updates, {
-    updatedAt: new Date().toISOString()
-  });
-
-  saveAudioFiles(files);
-  console.log(`[AUDIO] Updated audio file: ${id}`);
-  return file;
+  return updated;
 }
 
-/**
- * Delete audio file metadata
- */
-function deleteAudioFile(id) {
-  const files = loadAudioFiles();
-  const index = files.findIndex(f => f.id === id);
+async function deleteAudioFile(id) {
+  const deleted = await AudioFile.findOneAndDelete({ id });
 
-  if (index === -1) {
+  if (!deleted) {
     throw new Error(`Audio file with ID '${id}' not found`);
   }
 
-  const deleted = files.splice(index, 1);
-  saveAudioFiles(files);
-
-  console.log(`[AUDIO] Deleted audio file: ${id}`);
-  return deleted[0];
+  return deleted;
 }
 
 module.exports = {
-  loadAudioFiles,
-  saveAudioFiles,
   addAudioFile,
   getAudioFileById,
   getAudioFileByFilename,
   getAllAudioFiles,
   updateAudioFile,
-  deleteAudioFile
+  deleteAudioFile,
 };

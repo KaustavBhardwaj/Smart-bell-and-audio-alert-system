@@ -1,45 +1,22 @@
-const fs = require("fs");
 const path = require("path");
 const cron = require("node-cron");
+
 const { playFile } = require("./audioService");
 const { publishBellOn, publishPlayUrl } = require("./mqttService");
 const { textToSpeech } = require("./ttsService");
+
 const { MEDIA_PATH, PUBLIC_BASE_URL } = require("../config/env");
 const { sanitizeBaseName } = require("../utils/sanitize");
 
-const SCHEDULES_FILE = path.join(__dirname, "../data/schedules.json");
-const jobs = {}; // Store active cron jobs
+const Schedule = require("../models/Schedule");
 
-// Load schedules from file
-function loadSchedules() {
-  try {
-    if (fs.existsSync(SCHEDULES_FILE)) {
-      const data = fs.readFileSync(SCHEDULES_FILE, "utf-8");
-      return JSON.parse(data).schedules || [];
-    }
-  } catch (err) {
-    console.error("Error loading schedules:", err.message);
-  }
-  return [];
-}
+const jobs = {};
 
-// Save schedules to file
-function saveSchedules(schedules) {
-  try {
-    fs.writeFileSync(SCHEDULES_FILE, JSON.stringify({ schedules }, null, 2));
-    return true;
-  } catch (err) {
-    console.error("Error saving schedules:", err.message);
-    return false;
-  }
-}
-
-// Convert time (HH:MM) to cron format (minute hour * * *)
+// Convert time (HH:MM) to cron format
 function timeToCronExpression(time, days = null) {
   const [hour, minute] = time.split(":");
 
-  if (days && days.length > 0) {
-    // Map day names to cron day numbers (0=Sunday, 1=Monday, etc.)
+  if (days && days.length > 0 && !days.includes("everyday")) {
     const dayMap = {
       sunday: 0,
       monday: 1,
@@ -51,24 +28,23 @@ function timeToCronExpression(time, days = null) {
     };
 
     const dayNumbers = days
-      .map((d) => dayMap[d.toLowerCase()])
+      .map((d) => dayMap[String(d).toLowerCase()])
       .filter((d) => d !== undefined);
 
     if (dayNumbers.length > 0) {
-      const dayList = dayNumbers.join(",");
-      return `${minute} ${hour} * * ${dayList}`;
+      return `${minute} ${hour} * * ${dayNumbers.join(",")}`;
     }
   }
 
-  return `${minute} ${hour} * * *`; // Every day
+  return `${minute} ${hour} * * *`;
 }
 
-// Create a unified schedule (bell or announcement)
-function createSchedule(scheduleData) {
+// Create schedule: bell, announcement, or TTS announcement
+async function createSchedule(scheduleData) {
   const {
     id,
     name,
-    type, // "bell", "announcement", "tts-announcement"
+    type,
     filename,
     text,
     language = "en",
@@ -79,7 +55,6 @@ function createSchedule(scheduleData) {
     duration,
   } = scheduleData;
 
-  // Validation
   if (!id) {
     throw new Error("Schedule ID is required");
   }
@@ -100,76 +75,67 @@ function createSchedule(scheduleData) {
     throw new Error("Time must be in HH:MM format");
   }
 
-  // Get existing schedules
-  const schedules = loadSchedules();
+  const existing = await Schedule.findOne({ id });
 
-  // Check if ID already exists
-  if (schedules.some((s) => s.id === id)) {
+  if (existing) {
     throw new Error("Schedule with this ID already exists");
   }
 
-  // Create cron expression
-  const cronExpression = timeToCronExpression(time, days);
+  const finalDays = days.length > 0 ? days : ["everyday"];
+  const cronExpression = timeToCronExpression(time, finalDays);
 
-  const schedule = {
+  const schedule = await Schedule.create({
     id,
     name: name || id,
     type,
     filename: filename || null,
     text: text || null,
-    language: language || "en",
+    language,
     time,
-    days: days.length > 0 ? days : ["everyday"],
+    days: finalDays,
     repeat,
     enabled,
     duration: duration || null,
     cronExpression,
-    createdAt: new Date().toISOString(),
-  };
+  });
 
-  // Schedule the job if enabled
   if (enabled) {
     scheduleJob(schedule);
   }
-
-  // Save to file
-  schedules.push(schedule);
-  saveSchedules(schedules);
 
   console.log(`[SCHEDULE] Created ${type} schedule: ${id}`);
   return schedule;
 }
 
-// Schedule a job using cron - handles bell, file announcement, and TTS announcement schedules
+// Schedule cron job
 function scheduleJob(schedule) {
   const { id, type, cronExpression, filename, text, language } = schedule;
 
   try {
-    // Cancel existing job if any
     if (jobs[id]) {
       jobs[id].stop();
       delete jobs[id];
     }
 
-    // Create new cron job
     jobs[id] = cron.schedule(cronExpression, async () => {
-      console.log(`[SCHEDULE] Running scheduled job: ${id} (type: ${type})`);
+      console.log(`[SCHEDULE] Running scheduled job: ${id} (${type})`);
 
       try {
         if (type === "bell") {
-          // Trigger bell via MQTT to bell node
           console.log(`[SCHEDULE] Triggering bell: ${id}`);
           publishBellOn();
-        } else if (type === "announcement") {
-          // Play audio file to audio node
+        }
+
+        else if (type === "announcement") {
           if (filename) {
             const url = playFile(filename);
             console.log(`[SCHEDULE] Triggered file playback: ${url}`);
           }
-        } else if (type === "tts-announcement") {
-          // Generate WAV from TTS and publish its URL to audio node
+        }
+
+        else if (type === "tts-announcement") {
           if (text) {
-            console.log(`[SCHEDULE] Triggering TTS announcement: "${text}"`);
+            console.log(`[SCHEDULE] Triggering TTS: "${text}"`);
 
             const baseName = sanitizeBaseName(`tts_schedule_${id}`);
             const timestamp = Date.now();
@@ -195,9 +161,7 @@ function scheduleJob(schedule) {
       }
     });
 
-    console.log(
-      `[SCHEDULE] Registered: ${id} at ${cronExpression} (type: ${type})`
-    );
+    console.log(`[SCHEDULE] Registered: ${id} at ${cronExpression} (${type})`);
     return true;
   } catch (err) {
     console.error(`[SCHEDULE] Error scheduling job ${id}:`, err.message);
@@ -206,43 +170,37 @@ function scheduleJob(schedule) {
 }
 
 // Get all schedules
-function getSchedules() {
-  return loadSchedules();
+async function getSchedules() {
+  return await Schedule.find({}).sort({ createdAt: -1 });
 }
 
 // Get schedule by ID
-function getScheduleById(id) {
-  const schedules = loadSchedules();
-  return schedules.find((s) => s.id === id);
+async function getScheduleById(id) {
+  return await Schedule.findOne({ id });
 }
 
 // Delete schedule
-function deleteSchedule(id) {
-  const schedules = loadSchedules();
-  const index = schedules.findIndex((s) => s.id === id);
+async function deleteSchedule(id) {
+  const schedule = await Schedule.findOne({ id });
 
-  if (index === -1) {
+  if (!schedule) {
     throw new Error("Schedule not found");
   }
 
-  // Stop cron job
   if (jobs[id]) {
     jobs[id].stop();
     delete jobs[id];
   }
 
-  // Remove from array and save
-  schedules.splice(index, 1);
-  saveSchedules(schedules);
+  await Schedule.deleteOne({ id });
 
   console.log(`[SCHEDULE] Deleted schedule: ${id}`);
   return true;
 }
 
 // Update schedule
-function updateSchedule(id, updates) {
-  const schedules = loadSchedules();
-  const schedule = schedules.find((s) => s.id === id);
+async function updateSchedule(id, updates) {
+  const schedule = await Schedule.findOne({ id });
 
   if (!schedule) {
     throw new Error("Schedule not found");
@@ -250,27 +208,27 @@ function updateSchedule(id, updates) {
 
   const oldEnabled = schedule.enabled;
 
-  Object.assign(schedule, updates, {
-    updatedAt: new Date().toISOString(),
-  });
+  Object.assign(schedule, updates);
 
   if (updates.time || updates.days) {
-    schedule.cronExpression = timeToCronExpression(
-      schedule.time,
-      schedule.days
-    );
+    const finalDays =
+      schedule.days && schedule.days.length > 0
+        ? schedule.days
+        : ["everyday"];
+
+    schedule.days = finalDays;
+    schedule.cronExpression = timeToCronExpression(schedule.time, finalDays);
   }
 
-  // stop job if disabled
+  await schedule.save();
+
   if (schedule.enabled === false) {
     if (jobs[id]) {
       jobs[id].stop();
       delete jobs[id];
       console.log(`[SCHEDULE] Stopped job for ${id}`);
     }
-  }
-  // start or restart job if enabled
-  else if (
+  } else if (
     schedule.enabled === true &&
     (!oldEnabled || updates.time || updates.days)
   ) {
@@ -278,26 +236,27 @@ function updateSchedule(id, updates) {
     console.log(`[SCHEDULE] Started/updated job for ${id}`);
   }
 
-  saveSchedules(schedules);
   return schedule;
 }
 
-function initializeSchedules() {
-  const schedules = loadSchedules();
+// Initialize all enabled schedules from MongoDB
+async function initializeSchedules() {
+  const schedules = await Schedule.find({ enabled: true });
+
   let count = 0;
   let bellCount = 0;
   let announcementCount = 0;
   let ttsCount = 0;
 
   schedules.forEach((schedule) => {
-    if (schedule.enabled) {
-      const result = scheduleJob(schedule);
-      if (result) {
-        count++;
-        if (schedule.type === "bell") bellCount++;
-        else if (schedule.type === "announcement") announcementCount++;
-        else if (schedule.type === "tts-announcement") ttsCount++;
-      }
+    const result = scheduleJob(schedule);
+
+    if (result) {
+      count++;
+
+      if (schedule.type === "bell") bellCount++;
+      else if (schedule.type === "announcement") announcementCount++;
+      else if (schedule.type === "tts-announcement") ttsCount++;
     }
   });
 
@@ -313,6 +272,5 @@ module.exports = {
   deleteSchedule,
   updateSchedule,
   initializeSchedules,
-  loadSchedules,
-  saveSchedules,
+  scheduleJob,
 };

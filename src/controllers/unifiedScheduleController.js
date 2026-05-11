@@ -1,3 +1,11 @@
+const fs = require("fs");
+const path = require("path");
+const { MEDIA_PATH } = require("../config/env");
+const {
+  getAllAudioFiles,
+  deleteAudioFile
+} = require("../services/audioFileService");
+
 const { validateFilename } = require("../utils/validation");
 const {
   createSchedule,
@@ -6,7 +14,34 @@ const {
   deleteSchedule,
   updateSchedule
 } = require("../services/scheduleService");
-const { getAllAudioFiles } = require("../services/audioFileService");
+// const { getAllAudioFiles } = require("../services/audioFileService");  
+
+
+async function deleteAvailableAudioFile(req, res) {
+  try {
+    const { id } = req.params;
+
+    const deletedFile = await deleteAudioFile(id);
+
+    const filePath = path.join(MEDIA_PATH, deletedFile.filename);
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    res.json({
+      deleted: true,
+      id,
+      filename: deletedFile.filename,
+      message: "Audio file deleted successfully",
+    });
+  } catch (err) {
+    res.status(404).json({
+      error: "Failed to delete audio file",
+      details: err.message,
+    });
+  }
+}
 
 // =============================
 // GET SCHEDULES
@@ -212,12 +247,19 @@ function toggleSchedule(req, res) {
 // =============================
 // GET AVAILABLE AUDIO FILES
 // =============================
-function getAvailableAudioFiles(req, res) {
+async function getAvailableAudioFiles(req, res) {
   try {
-    const files = getAllAudioFiles();
-    res.json({ count: files.length, files });
+    const files = await getAllAudioFiles();
+
+    res.json({
+      count: files.length,
+      files,
+    });
   } catch (err) {
-    res.status(500).json({ error: "Failed to get audio files", details: err.message });
+    res.status(500).json({
+      error: "Failed to get audio files",
+      details: err.message,
+    });
   }
 }
 
@@ -230,5 +272,6 @@ module.exports = {
   updateScheduleHandler,
   deleteScheduleHandler,
   toggleSchedule,
-  getAvailableAudioFiles
+  getAvailableAudioFiles,
+  deleteAvailableAudioFile
 };

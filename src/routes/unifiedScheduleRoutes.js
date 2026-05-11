@@ -9,12 +9,15 @@ const {
   updateScheduleHandler,
   deleteScheduleHandler,
   toggleSchedule,
-  getAvailableAudioFiles
+  getAvailableAudioFiles,
+  deleteAvailableAudioFile
 } = require("../controllers/unifiedScheduleController");
 
 // =============================
 // SCHEDULE MANAGEMENT
 // =============================
+
+
 
 /**
  * GET /api/schedules
@@ -26,6 +29,9 @@ router.get("/api/schedules", listSchedules);
  * GET /api/schedules/:id
  * Get specific schedule by ID
  */
+router.get("/api/schedules/files/available", getAvailableAudioFiles);
+router.delete("/api/schedules/files/:id", deleteAvailableAudioFile);
+
 router.get("/api/schedules/:id", getSchedule);
 
 // =============================
@@ -71,8 +77,10 @@ router.delete("/api/schedules/:id", deleteScheduleHandler);
 
 /**
  * POST /api/schedules/:id/toggle
+ * 
  * Enable/disable a schedule
  */
+
 router.post("/api/schedules/:id/toggle", toggleSchedule);
 
 // =============================
@@ -83,6 +91,6 @@ router.post("/api/schedules/:id/toggle", toggleSchedule);
  * GET /api/schedules/files/available
  * Get list of available audio files for announcements
  */
-router.get("/api/schedules/files/available", getAvailableAudioFiles);
+
 
 module.exports = router;
