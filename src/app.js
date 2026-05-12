@@ -16,6 +16,7 @@ const errorHandler = require("./middleware/errorHandler");
 const aiAnnouncementRoutes = require("./routes/aiAnnouncementRoutes");
 const apiKeyAuth = require("./middleware/apiKeyAuth");
 const { getAudioFileByFilename } = require("./services/audioFileService");
+const { ensureMediaFileAvailable, getMediaPath } = require("./services/audioService");
 
 const app = express();
 
@@ -28,33 +29,18 @@ fs.mkdirSync(UPLOADS_PATH, { recursive: true });
 app.get("/media/:filename", async (req, res) => {
   try {
     const filename = req.params.filename;
-    const localPath = path.join(MEDIA_PATH, filename);
-
-    if (fs.existsSync(localPath)) {
-      return res.sendFile(localPath);
-    }
 
     const file = await getAudioFileByFilename(filename);
 
-    if (!file || !file.cloudUrl) {
-      return res.status(404).json({ error: "media file not found" });
-    }
-
-    const cloudResponse = await fetch(file.cloudUrl);
-
-    if (!cloudResponse.ok) {
-      return res.status(502).json({ error: "failed to fetch cloud audio" });
-    }
-
-    const buffer = Buffer.from(await cloudResponse.arrayBuffer());
+    await ensureMediaFileAvailable(filename, file?.cloudUrl);
 
     res.setHeader("Content-Type", "audio/wav");
-    res.setHeader("Content-Length", buffer.length);
+    res.setHeader("Accept-Ranges", "bytes");
 
-    return res.send(buffer);
+    return res.sendFile(getMediaPath(filename));
   } catch (err) {
-    return res.status(500).json({
-      error: "media fallback failed",
+    return res.status(404).json({
+      error: "media file not found",
       details: err.message,
     });
   }

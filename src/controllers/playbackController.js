@@ -1,7 +1,8 @@
 const { listMediaFiles } = require("../services/fileService");
-const { playFile, fileExistsInMedia, setVolume, getVolume } = require("../services/audioService");
+const { playFile, ensureMediaFileAvailable, setVolume, getVolume } = require("../services/audioService");
 const { publishStop, publishVolume } = require("../services/mqttService");
 const { validateFilename } = require("../utils/validation");
+const { getAudioFileByFilename } = require("../services/audioFileService");
 
 function listAnnouncements(req, res) {
   const files = listMediaFiles();
@@ -13,7 +14,7 @@ function playTest(req, res) {
   res.json({ sent: true, type: "test", url });
 }
 
-function playExistingFile(req, res) {
+async function playExistingFile(req, res) {
   const { filename, url, volume, target = "all" } = req.body;
 
   let volumeLevel = 70;
@@ -25,21 +26,21 @@ function playExistingFile(req, res) {
   }
 
   if (filename) {
-    const validation = validateFilename(filename);
-    if (!validation.valid) {
-      return res.status(400).json({ error: validation.error });
-    }
+   const fileRecord = await getAudioFileByFilename(filename);
 
-    const localUrl = playFile(filename, target);
+await ensureMediaFileAvailable(filename, fileRecord?.cloudUrl);
 
-    return res.json({
-      sent: true,
-      source: "backend-media",
-      filename,
-      url: localUrl,
-      volume: volumeLevel,
-      target,
-    });
+const localUrl = playFile(filename, target);
+
+return res.json({
+  sent: true,
+  source: "backend-media-restored",
+  filename,
+  url: localUrl,
+  restoredFromCloud: Boolean(fileRecord?.cloudUrl),
+  volume: volumeLevel,
+  target,
+});
   }
 
   if (url) {

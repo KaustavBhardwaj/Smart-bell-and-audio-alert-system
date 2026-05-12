@@ -14,7 +14,7 @@ function convertToAnnouncementWav(inputPath, outputPath) {
       "-map_metadata", "-1",
       "-bitexact",
 
-      "-af", "volume=1.0",
+      "-af", "volume=1.4",
       // ESP32-safe format
       "-vn",
       "-ac", "1",
