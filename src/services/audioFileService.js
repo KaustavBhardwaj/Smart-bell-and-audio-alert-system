@@ -47,8 +47,12 @@ async function addAudioFile(audioData) {
   description: description || "",
   duration,
   type,
+
+  url: audioData.url || null,
+  localUrl: audioData.localUrl || null,
   cloudUrl: audioData.cloudUrl || null,
   publicId: audioData.publicId || null,
+
   uploadedAt: new Date(),
 });
 

@@ -9,6 +9,42 @@ const { validateFileUpload } = require("../utils/validation");
 const { convertToAnnouncementWav } = require("../services/converterService");
 const { publishPlayUrl } = require("../services/mqttService");
 const { addAudioFile } = require("../services/audioFileService");
+const { buildMediaUrl } = require("../services/audioService");
+
+async function safeDelete(filePath) {
+  if (filePath && fs.existsSync(filePath)) {
+    fs.unlink(filePath, () => {});
+  }
+}
+
+async function uploadToCloudinary(outputPath, outputFilename) {
+  return cloudinary.uploader.upload(outputPath, {
+    resource_type: "raw",
+    folder: "iot-audio-files",
+    public_id: outputFilename.replace(".wav", ""),
+    use_filename: false,
+    unique_filename: false,
+    overwrite: true,
+  });
+}
+
+async function saveAudioFileToDB(req, outputFilename, baseName, cloudUpload, localUrl) {
+  return addAudioFile({
+    filename: outputFilename,
+    name: baseName.replace(/_/g, " "),
+    description: `Uploaded announcement: ${req.file.originalname}`,
+    duration: 0,
+    type: "file",
+
+    // local server URL for ESP32 playback
+    url: localUrl,
+    localUrl,
+
+    // cloud backup URL
+    cloudUrl: cloudUpload.secure_url,
+    publicId: cloudUpload.public_id,
+  });
+}
 
 async function uploadOnly(req, res) {
   let uploadedPath = null;
@@ -28,48 +64,52 @@ async function uploadOnly(req, res) {
     outputPath = path.join(MEDIA_PATH, outputFilename);
 
     await convertToAnnouncementWav(uploadedPath, outputPath);
-    fs.unlink(uploadedPath, () => {});
+    await safeDelete(uploadedPath);
 
-   const cloudUpload = await cloudinary.uploader.upload(outputPath, {
-  resource_type: "raw",
-  folder: "iot-audio-files",
-  public_id: outputFilename,
-  use_filename: false,
-  unique_filename: false,
-});
+    const localUrl = buildMediaUrl(outputFilename);
 
-    const fileEntry = await addAudioFile({
-      filename: outputFilename,
-      name: baseName.replace(/_/g, " "),
-      description: `Uploaded announcement: ${req.file.originalname}`,
-      duration: 0,
-      type: "file",
-      cloudUrl: cloudUpload.secure_url,
-      publicId: cloudUpload.public_id,
-    });
+    const cloudUpload = await uploadToCloudinary(outputPath, outputFilename);
 
-    if (outputPath && fs.existsSync(outputPath)) {
-      fs.unlink(outputPath, () => {});
-    }
+    const fileEntry = await saveAudioFileToDB(
+      req,
+      outputFilename,
+      baseName,
+      cloudUpload,
+      localUrl
+    );
+
+    // IMPORTANT:
+    // Do NOT delete outputPath.
+    // ESP32 and /play-file need this local WAV file.
 
     res.json({
       converted: true,
       uploadedToCloudinary: true,
+      savedLocally: true,
       filename: outputFilename,
-      url: cloudUpload.secure_url,
+
+      // use this for ESP32/local playback
+      url: localUrl,
+      localUrl,
+
+      // use this as backup/cloud reference
       cloudUrl: cloudUpload.secure_url,
-      fileId: fileEntry.id,
+
+      fileId: fileEntry.id || fileEntry._id,
       file: fileEntry,
+
       format: "wav",
       channels: 1,
       sampleRate: 16000,
       bitDepth: 16,
       registered: true,
-      message: "File uploaded, converted, stored in Cloudinary, and saved in MongoDB",
+      message: "File uploaded, converted, stored locally, uploaded to Cloudinary, and saved in MongoDB",
     });
   } catch (err) {
-    if (uploadedPath && fs.existsSync(uploadedPath)) fs.unlink(uploadedPath, () => {});
-    if (outputPath && fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
+    await safeDelete(uploadedPath);
+
+    // delete converted file only if upload failed
+    await safeDelete(outputPath);
 
     res.status(500).json({
       error: "upload failed",
@@ -89,6 +129,8 @@ async function uploadAndPlay(req, res) {
       return res.status(400).json({ error: validation.error });
     }
 
+    const { target = "all" } = req.body;
+
     uploadedPath = req.file.path;
 
     const baseName = sanitizeBaseName(req.file.originalname || "announcement");
@@ -96,47 +138,55 @@ async function uploadAndPlay(req, res) {
     outputPath = path.join(MEDIA_PATH, outputFilename);
 
     await convertToAnnouncementWav(uploadedPath, outputPath);
-    fs.unlink(uploadedPath, () => {});
+    await safeDelete(uploadedPath);
 
-    const cloudUpload = await cloudinary.uploader.upload(outputPath, {
-  resource_type: "raw",
-  folder: "iot-audio-files",
-  public_id: outputFilename,
-  use_filename: false,
-  unique_filename: false,
-});
+    const localUrl = buildMediaUrl(outputFilename);
 
-    const fileEntry = await addAudioFile({
-      filename: outputFilename,
-      name: baseName.replace(/_/g, " "),
-      description: `Uploaded announcement: ${req.file.originalname}`,
-      duration: 0,
-      type: "file",
-      cloudUrl: cloudUpload.secure_url,
-      publicId: cloudUpload.public_id,
-    });
+    const cloudUpload = await uploadToCloudinary(outputPath, outputFilename);
 
-    publishPlayUrl(cloudUpload.secure_url);
+    const fileEntry = await saveAudioFileToDB(
+      req,
+      outputFilename,
+      baseName,
+      cloudUpload,
+      localUrl
+    );
 
-    if (outputPath && fs.existsSync(outputPath)) {
-      fs.unlink(outputPath, () => {});
-    }
+    // IMPORTANT:
+    // Play local backend URL, not Cloudinary URL.
+    // ESP32 works better with your backend WAV format.
+    publishPlayUrl(localUrl, target);
+
+    // Do NOT delete outputPath.
 
     res.json({
       converted: true,
       uploadedToCloudinary: true,
+      savedLocally: true,
       played: true,
+      target,
       filename: outputFilename,
-      url: cloudUpload.secure_url,
+
+      // ESP32 playback URL
+      url: localUrl,
+      localUrl,
+
+      // cloud backup URL
       cloudUrl: cloudUpload.secure_url,
-      fileId: fileEntry.id,
+
+      fileId: fileEntry.id || fileEntry._id,
       file: fileEntry,
+
+      format: "wav",
+      channels: 1,
+      sampleRate: 16000,
+      bitDepth: 16,
       registered: true,
-      message: "File uploaded, stored in Cloudinary, saved in MongoDB, and playing",
+      message: "File uploaded, converted, stored locally, uploaded to Cloudinary, saved in MongoDB, and playing",
     });
   } catch (err) {
-    if (uploadedPath && fs.existsSync(uploadedPath)) fs.unlink(uploadedPath, () => {});
-    if (outputPath && fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
+    await safeDelete(uploadedPath);
+    await safeDelete(outputPath);
 
     res.status(500).json({
       error: "upload and play failed",

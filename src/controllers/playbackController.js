@@ -24,37 +24,39 @@ function playExistingFile(req, res) {
     publishVolume(volumeLevel, target);
   }
 
+  if (filename) {
+    const validation = validateFilename(filename);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+
+    const localUrl = playFile(filename, target);
+
+    return res.json({
+      sent: true,
+      source: "backend-media",
+      filename,
+      url: localUrl,
+      volume: volumeLevel,
+      target,
+    });
+  }
+
   if (url) {
     const { publishPlayUrl } = require("../services/mqttService");
     publishPlayUrl(url, target);
 
     return res.json({
       sent: true,
-      source: "cloudinary",
+      source: "direct-url",
       url,
       volume: volumeLevel,
       target,
     });
   }
 
-  const validation = validateFilename(filename);
-  if (!validation.valid) {
-    return res.status(400).json({ error: validation.error });
-  }
-
-  if (!fileExistsInMedia(filename)) {
-    return res.status(404).json({ error: "file not found" });
-  }
-
-  const localUrl = playFile(filename, target);
-
-  res.json({
-    sent: true,
-    source: "local",
-    filename,
-    url: localUrl,
-    volume: volumeLevel,
-    target,
+  return res.status(400).json({
+    error: "filename or url is required",
   });
 }
 

@@ -282,11 +282,10 @@ async function playAudioFileById(fileId, target = 'all') {
   }
 
   return await postJson('/announcement/play-file', {
-    filename: file.filename,
-    url: file.cloudUrl || null,
-    target,
-    volume: Number($('playVolume').value || 70),
-  }, 'Playback command sent');
+  filename: file.filename,
+  target,
+  volume: Number($('playVolume').value || 70),
+}, 'Playback command sent');
 }
 
 function bindEvents() {
@@ -355,12 +354,11 @@ function bindEvents() {
         throw new Error('Please select an audio file');
       }
 
-      await postJson('/announcement/play-file', {
-        filename: selectedFile.filename,
-        url: selectedFile.cloudUrl || null,
-        target: $('playTarget').value,
-        volume: Number($('playVolume').value),
-      }, 'Playback command sent');
+     await postJson('/announcement/play-file', {
+  filename: selectedFile.filename,
+  target: $('playTarget').value,
+  volume: Number($('playVolume').value),
+}, 'Playback command sent');
     } catch (err) {
       toast(err.message, 'error');
     }

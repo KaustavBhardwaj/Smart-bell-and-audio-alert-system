@@ -7,8 +7,12 @@ const audioFileSchema = new mongoose.Schema({
   description: String,
   duration: Number,
   type: String,
+
+  url: String,
+  localUrl: String,
   cloudUrl: String,
   publicId: String,
+
   uploadedAt: { type: Date, default: Date.now },
 }, { timestamps: true });
 
