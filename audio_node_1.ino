@@ -295,9 +295,9 @@ void streamWavFromUrl(const String& url) {
     return;
   }
 
-  httpClient->print(String("GET ") + path + " HTTP/1.1\r\n" +
-                    "Host: " + host + "\r\n" +
-                    "Connection: close\r\n\r\n");
+  httpClient->print(String("GET ") + path + " HTTP/1.0\r\n" +
+                  "Host: " + host + "\r\n" +
+                  "Connection: close\r\n\r\n");
 
   Serial.println("HTTP/HTTPS request sent");
 

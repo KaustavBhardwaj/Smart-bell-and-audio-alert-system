@@ -11,6 +11,8 @@ function convertToAnnouncementWav(inputPath, outputPath) {
       "-i", inputPath,
 
       // important: remove metadata chunks
+      "-fflags", "+bitexact",
+      "-flags:a", "+bitexact",
       "-map_metadata", "-1",
       "-bitexact",
 
